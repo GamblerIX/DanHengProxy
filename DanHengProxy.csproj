@@ -1,0 +1,71 @@
+<!-- 
+  相关文件:
+  - Program.cs           : 程序入口
+  - ProxyService.cs      : 代理服务核心逻辑
+  - ProxyConfig.cs       : 配置模型
+  - ProxyConfigContext.cs: JSON 序列化上下文
+  - config.tmpl.json     : 配置模板
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ============================================
+       基础项目配置
+       ============================================ -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PublishAot>true</PublishAot>
+    <RollForward>Major</RollForward>
+    <LangVersion>Latest</LangVersion>
+    
+    <!-- 程序集版本信息 -->
+    <AssemblyVersion>2.1.0</AssemblyVersion>
+    <FileVersion>2.1.0</FileVersion>
+    <Version>2.1.0</Version>
+    
+    <!-- 程序集元数据 -->
+    <AssemblyName>DanHengProxy</AssemblyName>
+    <RootNamespace>DanHengProxy</RootNamespace>
+    <ApplicationIcon>DanHeng.ico</ApplicationIcon>
+    
+    <!-- 产品信息 -->
+    <Product>DanHengProxy</Product>
+    <Description>A simple HTTPS Proxy for Private Servers with SSL support</Description>
+  </PropertyGroup>
+
+  <!-- ============================================
+       排除目录
+       ============================================ -->
+  <ItemGroup>
+    <Compile Remove="Guardian\**" />
+    <EmbeddedResource Remove="Guardian\**" />
+    <None Remove="Guardian\**" />
+  </ItemGroup>
+
+  <!-- ============================================
+       资源文件
+       ============================================ -->
+  <ItemGroup>
+    <Content Include="DanHeng.ico" />
+  </ItemGroup>
+	
+  <!-- ============================================
+       NuGet 依赖包
+       ============================================ -->
+  <ItemGroup>
+    <!-- Web 代理库，用于拦截和修改 HTTP/HTTPS 请求 -->
+    <PackageReference Include="Unobtanium.Web.Proxy" Version="0.1.1" />
+  </ItemGroup>
+
+  <!-- ============================================
+       配置文件
+       ============================================ -->
+  <ItemGroup>
+    <None Include="config.tmpl.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+	
+</Project>

@@ -1,0 +1,105 @@
+# ============================================================================
+# 文件: .github/workflows/dotnet.yml
+# 描述: 自动构建和发布 DanHengProxy 的工作流。
+#      支持 Windows, Linux, macOS (Intel/Apple Silicon) 的 AOT 构建。
+# 相关文件:
+#   - DanHengProxy.csproj  : 项目配置文件
+#   - config.tmpl.json     : 配置模板
+#   - Program.cs           : 程序入口点
+#   - ProxyService.cs      : 代理核心逻辑
+#   - README.md            : 项目快速入门指南
+#   - docs/development.md  : 开发与构建指南
+# ============================================================================
+
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# ----------------------------------------------------------------------------
+# 环境变量定义
+# ----------------------------------------------------------------------------
+env:
+  PROJECT_PATH: 'DanHengProxy.csproj'
+  DOTNET_VERSION: '8.0.x'
+  OUTPUT_DIR: './publish'
+  ZIP_NAME: '' # 动态生成的压缩包名称，预定义以避免上下文验证错误
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      RUNTIME: win-x64
+      SUFFIX: .exe
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Publish AOT
+      # AOT 编译需要对应平台的工具链，Windows 运行环境已预装
+      run: dotnet publish ${{ env.PROJECT_PATH }} -c Release -r ${{ env.RUNTIME }} --self-contained true -p:PublishAot=true -o ${{ env.OUTPUT_DIR }}
+
+    - name: Prepare Artifacts
+      shell: pwsh
+      run: |
+        # 移除调试符号文件
+        Get-ChildItem -Path ${{ env.OUTPUT_DIR }} -Include *.pdb,*.dbg -Recurse | Remove-Item -Force
+        
+        # 确保包含配置模板
+        if (!(Test-Path "${{ env.OUTPUT_DIR }}/config.tmpl.json")) {
+            Copy-Item "./config.tmpl.json" "${{ env.OUTPUT_DIR }}/config.tmpl.json"
+        }
+        
+        # 获取文件名 (不含扩展名) 用于打包
+        $zipName = "DanHengProxy_${{ env.RUNTIME }}_${{ github.ref_name }}"
+        if ("${{ github.ref_type }}" -ne "tag") {
+            $zipName = "DanHengProxy_${{ env.RUNTIME }}_nightly"
+        }
+        echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+
+    - name: Zip Release Artifacts
+      shell: pwsh
+      run: |
+        Compress-Archive -Path ${{ env.OUTPUT_DIR }}/* -DestinationPath $env:ZIP_NAME.zip
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.ZIP_NAME }}
+        path: "*.zip"
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "*.zip"
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
