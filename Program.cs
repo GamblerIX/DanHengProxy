@@ -32,6 +32,38 @@ namespace DanHengProxy
         
         /// <summary>配置模板文件路径</summary>
         private const string ConfigTemplatePath = "config.tmpl.json";
+        
+        /// <summary>程序版本号</summary>
+        private const string Version = "2.2.0";
+
+        // ====================================================================
+        // 命令行参数结构体
+        // ====================================================================
+        
+        /// <summary>
+        /// 命令行参数配置
+        /// 用于支持无头模式和脚本集成
+        /// </summary>
+        private struct CommandLineArgs
+        {
+            /// <summary>无头模式 - 跳过所有交互确认</summary>
+            public bool Headless;
+            
+            /// <summary>静默模式 - 只输出错误和关键信息</summary>
+            public bool Quiet;
+            
+            /// <summary>覆盖目标主机地址</summary>
+            public string? Host;
+            
+            /// <summary>覆盖目标端口</summary>
+            public int? Port;
+            
+            /// <summary>覆盖 SSL 设置</summary>
+            public bool? EnableSsl;
+            
+            /// <summary>显示帮助信息</summary>
+            public bool ShowHelp;
+        }
 
         // ====================================================================
         // 静态字段
@@ -43,6 +75,9 @@ namespace DanHengProxy
         /// <summary>是否已执行清理操作（防止重复清理）</summary>
         private static bool s_cleanedUp = false;
         
+        /// <summary>命令行参数</summary>
+        private static CommandLineArgs s_args;
+        
         // ====================================================================
         // 主程序入口
         // ====================================================================
@@ -50,12 +85,27 @@ namespace DanHengProxy
         /// <summary>
         /// 程序主入口点
         /// </summary>
-        /// <param name="args">命令行参数（暂未使用）</param>
+        /// <param name="args">命令行参数</param>
         private static void Main(string[] args)
         {
+            // 解析命令行参数
+            s_args = ParseArgs(args);
+            
+            // 如果请求帮助，显示后退出
+            if (s_args.ShowHelp)
+            {
+                PrintHelp();
+                return;
+            }
+            
             // 设置控制台标题
             Console.Title = Title;
-            PrintBanner();
+            
+            // 根据模式决定是否打印 Banner
+            if (!s_args.Quiet)
+            {
+                PrintBanner();
+            }
             
             // 检查是否有其他代理软件在运行
             CheckProxy();
@@ -69,16 +119,28 @@ namespace DanHengProxy
                 ProxyConfigContext.Default.ProxyConfig
             ) ?? throw new FileLoadException("请正确配置 config.json 文件。");
             
+            // 应用命令行参数覆盖配置
+            ApplyCommandLineOverrides(conf);
+            
             // 启动代理服务
             s_proxyService = new ProxyService(conf.DestinationHost, conf.DestinationPort, conf);
             
             // 显示运行状态
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"\n✓ 代理服务已启动");
-            Console.WriteLine($"  目标服务器: {(conf.EnableSsl ? "https" : "http")}://{conf.DestinationHost}:{conf.DestinationPort}");
-            Console.WriteLine($"  SSL 模式: {(conf.EnableSsl ? "已启用" : "已禁用")}");
-            Console.ResetColor();
-            Console.WriteLine("\n按 Ctrl+C 停止代理服务...\n");
+            if (!s_args.Quiet)
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"\n✓ 代理服务已启动");
+                Console.WriteLine($"  目标服务器: {(conf.EnableSsl ? "https" : "http")}://{conf.DestinationHost}:{conf.DestinationPort}");
+                Console.WriteLine($"  SSL 模式: {(conf.EnableSsl ? "已启用" : "已禁用")}");
+                Console.WriteLine($"  无头模式: {(s_args.Headless ? "已启用" : "已禁用")}");
+                Console.ResetColor();
+                Console.WriteLine("\n按 Ctrl+C 停止代理服务...\n");
+            }
+            else
+            {
+                // 静默模式下只输出关键信息
+                Console.WriteLine($"[DanHengProxy] 已启动 -> {(conf.EnableSsl ? "https" : "http")}://{conf.DestinationHost}:{conf.DestinationPort}");
+            }
             
             // 注册退出事件处理
             AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
@@ -86,6 +148,22 @@ namespace DanHengProxy
 
             // 阻塞主线程，保持程序运行
             Thread.Sleep(-1);
+        }
+        
+        /// <summary>
+        /// 应用命令行参数覆盖配置
+        /// </summary>
+        /// <param name="conf">配置对象</param>
+        private static void ApplyCommandLineOverrides(ProxyConfig conf)
+        {
+            if (s_args.Host != null)
+                conf.DestinationHost = s_args.Host;
+            
+            if (s_args.Port.HasValue)
+                conf.DestinationPort = s_args.Port.Value;
+            
+            if (s_args.EnableSsl.HasValue)
+                conf.EnableSsl = s_args.EnableSsl.Value;
         }
 
         // ====================================================================
@@ -107,7 +185,7 @@ namespace DanHengProxy
                                      |___/                      |___/ 
 ");
             Console.ResetColor();
-            Console.WriteLine("  Version 2.1.0 - HTTPS Proxy with SSL Support\n");
+            Console.WriteLine($"  Version {Version} - HTTPS Proxy with SSL Support\n");
         }
 
         /// <summary>
@@ -146,9 +224,9 @@ namespace DanHengProxy
 
         /// <summary>
         /// 检查是否有其他代理软件正在运行
-        /// 如果检测到其他代理，提示用户确认
+        /// 如果检测到其他代理，根据模式决定是否提示用户确认
         /// </summary>
-        public static void CheckProxy()
+        private static void CheckProxy()
         {
             try
             {
@@ -161,9 +239,18 @@ namespace DanHengProxy
                     Console.WriteLine($"  当前系统代理: {proxyInfo}");
                     Console.WriteLine("  如果您正在使用 Clash、V2RayN、Fiddler 等代理软件，");
                     Console.WriteLine("  请先关闭它们以确保 DanHengProxy 能够正常工作。");
-                    Console.WriteLine("\n如果您确认没有问题，请按任意键继续...");
-                    Console.ReadKey(true);
-                    Console.WriteLine();
+                    
+                    // 无头模式下跳过交互确认
+                    if (!s_args.Headless)
+                    {
+                        Console.WriteLine("\n如果您确认没有问题，请按任意键继续...");
+                        Console.ReadKey(true);
+                        Console.WriteLine();
+                    }
+                    else
+                    {
+                        Console.WriteLine("  [无头模式] 自动继续...\n");
+                    }
                 }
             }
             catch (NullReferenceException)
@@ -194,6 +281,117 @@ namespace DanHengProxy
             {
                 return null;
             }
+        }
+        
+        // ====================================================================
+        // 命令行参数处理
+        // ====================================================================
+        
+        /// <summary>
+        /// 解析命令行参数
+        /// </summary>
+        /// <param name="args">命令行参数数组</param>
+        /// <returns>解析后的参数配置</returns>
+        private static CommandLineArgs ParseArgs(string[] args)
+        {
+            var result = new CommandLineArgs();
+            
+            for (int i = 0; i < args.Length; i++)
+            {
+                string arg = args[i].ToLower();
+                
+                switch (arg)
+                {
+                    case "--headless":
+                    case "-h":
+                        result.Headless = true;
+                        break;
+                        
+                    case "--quiet":
+                    case "-q":
+                        result.Quiet = true;
+                        break;
+                        
+                    case "--ssl":
+                        result.EnableSsl = true;
+                        break;
+                        
+                    case "--no-ssl":
+                        result.EnableSsl = false;
+                        break;
+                        
+                    case "--help":
+                    case "-?":
+                        result.ShowHelp = true;
+                        break;
+                        
+                    case "--host":
+                        if (i + 1 < args.Length)
+                        {
+                            result.Host = args[++i];
+                        }
+                        break;
+                        
+                    case "--port":
+                    case "-p":
+                        if (i + 1 < args.Length && int.TryParse(args[++i], out int port))
+                        {
+                            result.Port = port;
+                        }
+                        break;
+                        
+                    default:
+                        // 支持 --host=value 和 --port=value 格式
+                        if (arg.StartsWith("--host="))
+                        {
+                            result.Host = args[i].Substring(7);
+                        }
+                        else if (arg.StartsWith("--port="))
+                        {
+                            if (int.TryParse(args[i].Substring(7), out int p))
+                            {
+                                result.Port = p;
+                            }
+                        }
+                        break;
+                }
+            }
+            
+            return result;
+        }
+        
+        /// <summary>
+        /// 打印帮助信息
+        /// </summary>
+        private static void PrintHelp()
+        {
+            Console.WriteLine($@"
+DanHengProxy v{Version} - HTTPS 代理工具
+
+用法: DanHengProxy [选项]
+
+选项:
+  --headless, -H     启用无头模式，跳过所有交互确认
+  --quiet, -q        静默模式，只输出关键信息
+  --host <地址>      覆盖目标服务器地址
+  --port, -p <端口>  覆盖目标服务器端口
+  --ssl              启用 SSL/HTTPS 连接
+  --no-ssl           禁用 SSL/HTTPS 连接
+  --help, -?         显示此帮助信息
+
+示例:
+  DanHengProxy --headless
+    无头模式启动，使用 config.json 配置
+
+  DanHengProxy -H -q
+    无头模式 + 静默模式
+
+  DanHengProxy -H --host 192.168.1.100 --port 21000 --ssl
+    无头模式，覆盖服务器配置
+
+  DanHengProxy --host=127.0.0.1 --port=8080 --no-ssl
+    覆盖服务器配置（=格式）
+");
         }
     }
 }

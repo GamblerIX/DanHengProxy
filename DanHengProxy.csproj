@@ -21,9 +21,9 @@
     <LangVersion>Latest</LangVersion>
     
     <!-- 程序集版本信息 -->
-    <AssemblyVersion>2.1.0</AssemblyVersion>
-    <FileVersion>2.1.0</FileVersion>
-    <Version>2.1.0</Version>
+    <AssemblyVersion>2.2.0</AssemblyVersion>
+    <FileVersion>2.2.0</FileVersion>
+    <Version>2.2.0</Version>
     
     <!-- 程序集元数据 -->
     <AssemblyName>DanHengProxy</AssemblyName>

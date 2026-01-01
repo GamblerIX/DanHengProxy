@@ -1,6 +1,6 @@
 {
   "DestinationHost": "127.0.0.1",
-  "DestinationPort": 443,
+  "DestinationPort": 520,
   "EnableSsl": true,
   "ValidateServerCertificate": false,
   "ProxyBindPort": 0,

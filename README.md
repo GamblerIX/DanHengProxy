@@ -30,6 +30,45 @@
 - **正常关闭**：想要停止时，请在窗口按 `Ctrl+C` 或者直接点叉叉。程序会自动帮你把系统网络设置改回来。
 - **证书问题**：如果游戏提示连接不安全，通常是因为服务器证书问题，你可以在配置中将 `ValidateServerCertificate` 设为 `false`。
 
+## 🤖 无头模式（脚本集成）
+
+适合一键启动脚本或自动化场景，无需用户交互。
+
+### 命令行参数
+
+| 参数 | 说明 |
+|------|------|
+| `--headless`, `-H` | 无头模式，跳过所有交互确认 |
+| `--quiet`, `-q` | 静默模式，只输出关键信息 |
+| `--host <地址>` | 覆盖目标服务器地址 |
+| `--port`, `-p <端口>` | 覆盖目标服务器端口 |
+| `--ssl` | 启用 SSL/HTTPS 连接 |
+| `--no-ssl` | 禁用 SSL/HTTPS 连接 |
+| `--help` | 显示帮助信息 |
+
+### 使用示例
+
+```bash
+# 无头模式启动（使用 config.json 配置）
+DanHengProxy.exe --headless
+
+# 无头模式 + 静默模式
+DanHengProxy.exe -H -q
+
+# 覆盖服务器配置（一键启动）
+DanHengProxy.exe -H --host 192.168.1.100 --port 21000 --ssl
+```
+
+### 批处理脚本示例
+
+```batch
+@echo off
+start "" /B DanHengProxy.exe -H -q --host 127.0.0.1 --port 443 --ssl
+echo 代理已启动，按任意键停止...
+pause > nul
+taskkill /IM DanHengProxy.exe /F > nul 2>&1
+```
+
 ## 📂 进阶与开发
 
 如果你是开发者或者想要更改更高级的设置：

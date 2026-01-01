@@ -99,8 +99,11 @@ DanHengProxy/
 │
 ├── Program.cs                # 程序入口
 │   └── Main()                # 入口方法
+│   └── ParseArgs()           # 命令行参数解析
+│   └── ApplyCommandLineOverrides() # 应用参数覆盖
 │   └── CheckProxy()          # 代理检测
 │   └── InitConfig()          # 配置初始化
+│   └── PrintHelp()           # 帮助信息
 │
 ├── ProxyService.cs           # 代理服务
 │   └── SetEndPoint()         # 端点设置
