@@ -48,10 +48,9 @@ jobs:
       run: dotnet restore
 
     - name: Publish AOT
-      # AOT 编译需要对应平台的工具链，Windows 运行环境已预装
       run: dotnet publish ${{ env.PROJECT_PATH }} -c Release -r ${{ env.RUNTIME }} --self-contained true -p:PublishAot=true -o ${{ env.OUTPUT_DIR }}
 
-    - name: Prepare Artifacts
+    - name: Prepare and Zip Artifacts
       shell: pwsh
       run: |
         # 移除调试符号文件
@@ -67,12 +66,13 @@ jobs:
         if ("${{ github.ref_type }}" -ne "tag") {
             $zipName = "DanHengProxy_${{ env.RUNTIME }}_nightly"
         }
+        
+        # 在同一步骤中创建压缩包，避免环境变量传递问题
+        Write-Host "Creating archive: $zipName.zip"
+        Compress-Archive -Path ${{ env.OUTPUT_DIR }}/* -DestinationPath "$zipName.zip"
+        
+        # 设置环境变量供后续步骤使用
         echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
-
-    - name: Zip Release Artifacts
-      shell: pwsh
-      run: |
-        Compress-Archive -Path ${{ env.OUTPUT_DIR }}/* -DestinationPath $env:ZIP_NAME.zip
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
