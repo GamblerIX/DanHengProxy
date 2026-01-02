@@ -1,14 +1,13 @@
 # ============================================================================
 # 文件: .github/workflows/dotnet.yml
 # 描述: 自动构建和发布 DanHengProxy 的工作流。
-#      支持 Windows, Linux, macOS (Intel/Apple Silicon) 的 AOT 构建。
+#      支持手动指定版本号发布或仅进行构建测试。
 # 相关文件:
 #   - DanHengProxy.csproj  : 项目配置文件
 #   - config.tmpl.json     : 配置模板
 #   - Program.cs           : 程序入口点
 #   - ProxyService.cs      : 代理核心逻辑
 #   - README.md            : 项目快速入门指南
-#   - docs/development.md  : 开发与构建指南
 # ============================================================================
 
 name: Build and Release
@@ -18,6 +17,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: '发布版本号 (例如 2.2.0)。如果留空，则仅进行构建测试，不创建 Release。'
+        required: false
+        default: ''
 
 # ----------------------------------------------------------------------------
 # 环境变量定义
@@ -26,18 +30,39 @@ env:
   PROJECT_PATH: 'DanHengProxy.csproj'
   DOTNET_VERSION: '8.0.x'
   OUTPUT_DIR: './publish'
-  ZIP_NAME: '' # 动态生成的压缩包名称，预定义以避免上下文验证错误
+  RUNTIME: 'win-x64'
 
 jobs:
   build:
+    name: Build Windows x64
     runs-on: windows-latest
-    env:
-      RUNTIME: win-x64
-      SUFFIX: .exe
-
+    outputs:
+      should_release: ${{ steps.check_release.outputs.should_release }}
+      release_tag: ${{ steps.check_release.outputs.release_tag }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Check Release Condition
+      id: check_release
+      shell: pwsh
+      run: |
+        $shouldRelease = "false"
+        $tag = ""
+        
+        if ("${{ github.ref_type }}" -eq "tag") {
+            $shouldRelease = "true"
+            $tag = "${{ github.ref_name }}"
+        } elseif ("${{ github.event.inputs.version }}" -ne "") {
+            $shouldRelease = "true"
+            $tag = "v${{ github.event.inputs.version }}"
+            if ($tag -notmatch "^v") { $tag = "v$tag" }
+        }
+        
+        Write-Host "Should Release: $shouldRelease"
+        Write-Host "Release Tag: $tag"
+        echo "should_release=$shouldRelease" >> $env:GITHUB_OUTPUT
+        echo "release_tag=$tag" >> $env:GITHUB_OUTPUT
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
@@ -51,39 +76,34 @@ jobs:
       run: dotnet publish ${{ env.PROJECT_PATH }} -c Release -r ${{ env.RUNTIME }} --self-contained true -p:PublishAot=true -o ${{ env.OUTPUT_DIR }}
 
     - name: Prepare and Zip Artifacts
+      id: zip
       shell: pwsh
       run: |
         # 移除调试符号文件
         Get-ChildItem -Path ${{ env.OUTPUT_DIR }} -Include *.pdb,*.dbg -Recurse | Remove-Item -Force
         
-        # 确保包含配置模板
         if (!(Test-Path "${{ env.OUTPUT_DIR }}/config.tmpl.json")) {
             Copy-Item "./config.tmpl.json" "${{ env.OUTPUT_DIR }}/config.tmpl.json"
         }
         
-        # 获取文件名 (不含扩展名) 用于打包
-        $zipName = "DanHengProxy_${{ env.RUNTIME }}_${{ github.ref_name }}"
-        if ("${{ github.ref_type }}" -ne "tag") {
-            $zipName = "DanHengProxy_${{ env.RUNTIME }}_nightly"
-        }
+        $tag = "${{ steps.check_release.outputs.release_tag }}"
+        if ($tag -eq "") { $tag = "test-build" }
+        $zipName = "DanHengProxy_${{ env.RUNTIME }}_$tag"
         
-        # 在同一步骤中创建压缩包，避免环境变量传递问题
         Write-Host "Creating archive: $zipName.zip"
         Compress-Archive -Path ${{ env.OUTPUT_DIR }}/* -DestinationPath "$zipName.zip"
-        
-        # 设置环境变量供后续步骤使用
-        echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+        echo "zip_path=$zipName.zip" >> $env:GITHUB_OUTPUT
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ env.ZIP_NAME }}
+        name: ${{ env.RUNTIME }}-artifact
         path: "*.zip"
 
   release:
     name: Create GitHub Release
     needs: build
-    if: startsWith(github.ref, 'refs/tags/')
+    if: needs.build.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -97,7 +117,14 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: "*.zip"
+          tag_name: ${{ needs.build.outputs.release_tag }}
+          name: "DanHengProxy ${{ needs.build.outputs.release_tag }} Release"
+          body: |
+            ### 🛠️ 使用说明
+            1. 下载下方对应的 `.zip` 压缩包并解压。
+            2. 根据需要参考 [快速入门指南](https://github.com/${{ github.repository }}/blob/main/README.md) 进行配置。
+            3. 运行 `DanHengProxy.exe` 启动代理服务。
+          files: "artifacts/*.zip"
           generate_release_notes: true
           draft: false
           prerelease: false
